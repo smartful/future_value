@@ -1,6 +1,24 @@
 const btnCalcul = document.getElementById('calcul');
 const result = document.getElementById('result');
 const tabResult = document.getElementById('tab');
+const graphContainer = document.getElementById('futureValueChart');
+let graph;
+
+const currencyFormat = new Intl.NumberFormat('fr-FR', {
+  style: 'currency',
+  currency: 'EUR',
+});
+
+const graphSize = () => ({
+  width: graphContainer.clientWidth,
+  height: 360,
+});
+
+new ResizeObserver(() => {
+  if (graph && graphContainer.clientWidth > 0) {
+    graph.setSize(graphSize());
+  }
+}).observe(graphContainer);
 
 const toPerCent = (number) => {
   const perCentNumber = number / 100;
@@ -47,44 +65,65 @@ const buildFootTab = () => {
 };
 
 const makeGraph = (dataValue, dataInterestPart) => {
-  console.log('DataValue : ', dataValue);
-  console.log('DataInterest : ', dataInterestPart);
-  const ctx = document.getElementById('futureValueChart').getContext('2d');
-  const myChart = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: [1, 2, 3, 4, 5],
-      datasets: [
-        {
-          label: "Part d'intérêts",
-          type: 'bar',
-          data: dataInterestPart,
-          backgroundColor: 'rgba(62, 149, 205, 0.2)',
-          borderColor: '#3e95cd',
-          fill: false,
-        },
-        {
-          label: 'Valeur du capital',
-          data: dataValue,
-          borderColor: '#8e5ea2',
-          backgroundColor: 'rgba(142, 94, 162, 0.4)',
-          fill: false,
-        },
-      ],
-    },
-    options: {
-      title: {
-        display: true,
-        text: 'Évolution du capital',
+  // uPlot attend [abscisses, valeurs de la série 1, valeurs de la série 2].
+  // Chaque tableau doit avoir la même longueur ; la période 0 est le capital initial.
+  const periods = dataValue.map((_, index) => index);
+  const data = [periods, dataValue, dataInterestPart];
+
+  if (graph) {
+    graph.setData(data);
+    return;
+  }
+
+  graph = new uPlot({
+    title: 'Évolution du capital',
+    ...graphSize(),
+    scales: {
+      x: {
+        time: false, // Les abscisses sont des périodes, pas des dates.
+        range: (_, min, max) => [min, max > min ? max : min + 1],
       },
     },
-  });
+    series: [
+      { label: 'Période', value: (_, value) => value == null ? '—' : String(value) },
+      {
+        label: 'Valeur du capital',
+        stroke: '#8e5ea2',
+        width: 2,
+        fill: 'rgba(142, 94, 162, 0.1)',
+        value: (_, value) => value == null ? '—' : currencyFormat.format(value),
+      },
+      {
+        label: 'Intérêts de la période',
+        stroke: '#3e95cd',
+        width: 2,
+        value: (_, value) => value == null ? '—' : currencyFormat.format(value),
+      },
+    ],
+    axes: [
+      {
+        label: 'Période',
+        values: (_, ticks) => ticks.map((value) => Number.isInteger(value) ? String(value) : ''),
+        grid: { show: false },
+      },
+      {
+        size: 90,
+        values: (_, ticks) => ticks.map((value) => new Intl.NumberFormat('fr-FR', {
+          style: 'currency',
+          currency: 'EUR',
+          notation: 'compact',
+          maximumFractionDigits: 1,
+        }).format(value)),
+        grid: { stroke: '#e5e7eb', width: 1 },
+      },
+    ],
+  }, data, graphContainer);
 };
 
 const detailFutureValue = (presentValue, period, interest) => {
   let value = presentValue;
-  const dataInterestPart = [];
-  const dataValue = [];
+  const dataInterestPart = [0];
+  const dataValue = [presentValue];
   const optionDisplayInterest = {
     style: 'percent',
     minimumFractionDigits: 2,
@@ -125,9 +164,20 @@ btnCalcul.addEventListener('click', (event) => {
   event.preventDefault();
 
   const presentValue = parseFloat(document.getElementById('present_value').value);
-  const period = parseInt(document.getElementById('period').value);
+  const periodInput = document.getElementById('period');
+  const period = periodInput.valueAsNumber;
   let interest = parseFloat(document.getElementById('interest').value);
+
+  if (!Number.isFinite(presentValue) || !Number.isInteger(period) || period < 0 || !Number.isFinite(interest)) {
+    result.textContent = 'Saisissez un capital, un taux et un nombre entier de périodes supérieur ou égal à 0.';
+    return;
+  }
   interest = toPerCent(interest);
+
+  if (!Number.isFinite(presentValue * Math.pow(1 + interest, period))) {
+    result.textContent = 'Le résultat dépasse la capacité de calcul. Réduisez les valeurs saisies.';
+    return;
+  }
 
   futureValue(presentValue, period, interest);
   detailFutureValue(presentValue, period, interest);

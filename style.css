@@ -6,3 +6,19 @@ table, th, td {
 th, td {
     padding: 10px;
 }
+
+#futureValueChart {
+    width: 100%;
+    max-width: 1000px;
+}
+
+#futureValueChart .u-legend {
+    border: 0;
+    font-size: 14px;
+}
+
+#futureValueChart .u-legend th,
+#futureValueChart .u-legend td {
+    border: 0;
+    padding: 4px;
+}
